@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1014">
+<title>Змейка</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23131b21'/%3E%3Cpath d='M8 23V12a3 3 0 0 1 3-3h10' fill='none' stroke='%237cf0a0' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='22' r='4' fill='%23ff6b57'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1014;
+    --panel: #131b21;
+    --line: rgba(255, 255, 255, .08);
+    --text: #eef4f1;
+    --muted: #93a7a3;
+    --accent: #7cf0a0;
+    --accent-ink: #06240f;
+    --gold: #ffd166;
+    --board: min(100vw - 32px, 100vh - 210px, 560px);
+  }
+  @supports (height: 100dvh) {
+    :root { --board: min(100vw - 32px, 100dvh - 210px, 560px); }
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+
+  body {
+    display: grid;
+    place-items: center;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: radial-gradient(90vmax 60vmax at 50% -10%, #17302a 0%, transparent 65%), var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: var(--board);
+    grid-template-areas: "top" "stats" "board" "hint";
+    gap: 12px;
+  }
+
+  .top {
+    grid-area: top;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 40px;
+  }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+  }
+  .icon-btn:hover:not(:disabled) { background: #1c2830; }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  .icon-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+  .stats {
+    grid-area: stats;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .stat {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+  }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .stat b {
+    display: inline-block;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  #score { color: var(--accent); }
+  #best { color: var(--gold); }
+  .bump { animation: bump .25s ease-out; }
+  @keyframes bump { 40% { transform: scale(1.3); } }
+
+  .board {
+    grid-area: board;
+    position: relative;
+    width: var(--board);
+    height: var(--board);
+    overflow: hidden;
+    border-radius: 18px;
+    box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0, 0, 0, .45);
+  }
+  .board.shake { animation: shake .4s ease-out; }
+  @keyframes shake {
+    15% { transform: translate(-7px, 2px); }
+    35% { transform: translate(6px, -3px); }
+    55% { transform: translate(-4px, 2px); }
+    75% { transform: translate(2px, -1px); }
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    text-align: center;
+    background: rgba(9, 14, 17, .72);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    transition: opacity .2s, visibility .2s;
+  }
+  .overlay.hidden { opacity: 0; visibility: hidden; }
+  .overlay h2 { font-size: clamp(24px, 7vmin, 36px); font-weight: 800; letter-spacing: -.02em; }
+  .overlay h2.record { color: var(--gold); }
+  .overlay p { color: #c6d3d0; font-size: 16px; line-height: 1.4; }
+
+  .primary {
+    margin-top: 10px;
+    padding: 14px 28px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  .primary:hover { background: #9af7b8; }
+  .primary:active { transform: scale(.96); }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+  .hint {
+    grid-area: hint;
+    color: var(--muted);
+    font-size: 14px;
+    text-align: center;
+  }
+
+  /* Телефон в альбомной ориентации: панель слева, поле справа */
+  @media (max-height: 520px) and (orientation: landscape) {
+    :root { --board: min(100vh - 24px, 100vw - 240px); }
+    @supports (height: 100dvh) {
+      :root { --board: min(100dvh - 24px, 100vw - 240px); }
+    }
+    .app {
+      grid-template-columns: 180px var(--board);
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas: "top board" "stats board" "hint board";
+      column-gap: 16px;
+    }
+    .stats { grid-template-columns: 1fr; gap: 8px; }
+    .stat { padding: 10px 12px; }
+    .hint { text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bump, .board.shake { animation: none; }
+    .overlay, .primary { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <h1>Змейка</h1>
+      <button class="icon-btn" id="pauseBtn" type="button" aria-label="Пауза" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path id="pauseIcon" d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      </button>
+    </header>
+
+    <section class="stats">
+      <div class="stat"><span>Счёт</span><b id="score">0</b></div>
+      <div class="stat"><span>Рекорд</span><b id="best">0</b></div>
+    </section>
+
+    <div class="board" id="board">
+      <canvas id="game" aria-label="Игровое поле"></canvas>
+      <div class="overlay" id="overlay" aria-live="polite">
+        <h2 id="overlayTitle">Змейка</h2>
+        <p id="overlayText"></p>
+        <button class="primary" id="overlayBtn" type="button">Начать игру</button>
+      </div>
+    </div>
+
+    <p class="hint" id="hint"></p>
+  </main>
+
+<script>
+(() => {
+  'use strict';
+
+  const GRID = 20;
+  const BEST_KEY = 'snake.bestScore';
+  const SWIPE_DISTANCE = 24;
+  const SLOWEST_STEP = 140;
+  const FASTEST_STEP = 65;
+  const GAME_OVER_DELAY = 500;
+
+  const UP = { x: 0, y: -1 };
+  const DOWN = { x: 0, y: 1 };
+  const LEFT = { x: -1, y: 0 };
+  const RIGHT = { x: 1, y: 0 };
+  const KEY_DIRECTIONS = { ArrowUp: UP, ArrowDown: DOWN, ArrowLeft: LEFT, ArrowRight: RIGHT };
+
+  const PAUSE_ICON = 'M6 4h4v16H6zM14 4h4v16h-4z';
+  const PLAY_ICON = 'M7 4l13 8-13 8z';
+
+  const HEAD_COLOR = [143, 245, 168];
+  const TAIL_COLOR = [24, 150, 132];
+
+  const $ = id => document.getElementById(id);
+  const canvas = $('game');
+  const ctx = canvas.getContext('2d');
+  const board = $('board');
+  const scoreEl = $('score');
+  const bestEl = $('best');
+  const overlay = $('overlay');
+  const overlayTitle = $('overlayTitle');
+  const overlayText = $('overlayText');
+  const overlayBtn = $('overlayBtn');
+  const pauseBtn = $('pauseBtn');
+  const pauseIcon = $('pauseIcon');
+
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // state: 'ready' | 'playing' | 'paused' | 'over'
+  let state = 'ready';
+  let snake = [];
+  let dir = RIGHT;
+  let queue = [];
+  let prevTail = null;
+  let food = null;
+  let foodBorn = 0;
+  let score = 0;
+  let best = loadBest();
+  let newRecord = false;
+  let acc = 0;
+  let particles = [];
+  let cell = 0;
+  let backdrop = null;
+
+  // localStorage может быть недоступен (приватный режим, файл с диска)
+  function loadBest() {
+    try {
+      return parseInt(localStorage.getItem(BEST_KEY), 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function saveBest() {
+    try {
+      localStorage.setItem(BEST_KEY, String(best));
+    } catch { /* рекорд останется только до закрытия страницы */ }
+  }
+
+  function stepMs() {
+    return Math.max(FASTEST_STEP, SLOWEST_STEP - score * 2);
+  }
+
+  function spawnFood() {
+    const taken = new Set(snake.map(p => p.x + p.y * GRID));
+    const free = [];
+    for (let i = 0; i < GRID * GRID; i++) {
+      if (!taken.has(i)) free.push(i);
+    }
+    foodBorn = performance.now();
+    if (!free.length) return null;
+    const i = free[Math.floor(Math.random() * free.length)];
+    return { x: i % GRID, y: Math.floor(i / GRID) };
+  }
+
+  function reset() {
+    const mid = GRID / 2;
+    snake = [0, 1, 2, 3].map(i => ({ x: mid - i, y: mid }));
+    prevTail = snake[snake.length - 1];
+    dir = RIGHT;
+    queue = [];
+    score = 0;
+    newRecord = false;
+    particles = [];
+    food = spawnFood();
+    scoreEl.textContent = '0';
+  }
+
+  function start(firstDir) {
+    if (state !== 'ready') reset();
+    if (firstDir && firstDir !== dir) {
+      if (firstDir.x === -dir.x && firstDir.y === -dir.y) {
+        // Змейка стоит прямо, поэтому при старте может просто развернуться
+        snake.reverse();
+        prevTail = snake[snake.length - 1];
+        dir = firstDir;
+      } else {
+        queue.push(firstDir);
+      }
+    }
+    state = 'playing';
+    // Первый шаг выполняется сразу, чтобы голова не отпрыгивала назад при интерполяции
+    acc = stepMs();
+    hideOverlay();
+    syncPauseButton();
+  }
+
+  function setPaused(paused) {
+    if (paused && state === 'playing') {
+      state = 'paused';
+      showOverlay('Пауза', isTouch ? 'Змейка ждёт вас' : 'Нажмите пробел, чтобы продолжить', 'Продолжить');
+    } else if (!paused && state === 'paused') {
+      state = 'playing';
+      hideOverlay();
+    }
+    syncPauseButton();
+  }
+
+  function syncPauseButton() {
+    const paused = state === 'paused';
+    pauseBtn.disabled = state !== 'playing' && !paused;
+    pauseBtn.setAttribute('aria-label', paused ? 'Продолжить' : 'Пауза');
+    pauseIcon.setAttribute('d', paused ? PLAY_ICON : PAUSE_ICON);
+  }
+
+  function showOverlay(title, text, button, isRecord = false) {
+    overlayTitle.textContent = title;
+    overlayTitle.classList.toggle('record', isRecord);
+    overlayText.textContent = text;
+    overlayBtn.textContent = button;
+    overlay.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    overlay.classList.add('hidden');
+  }
+
+  function turn(next) {
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (queue.length >= 2 || next === last) return;
+    if (next.x === -last.x && next.y === -last.y) return;
+    queue.push(next);
+  }
+
+  function tick() {
+    if (queue.length) dir = queue.shift();
+
+    const head = snake[0];
+    const next = { x: head.x + dir.x, y: head.y + dir.y };
+    const grows = food && next.x === food.x && next.y === food.y;
+
+    const hitWall = next.x < 0 || next.y < 0 || next.x >= GRID || next.y >= GRID;
+    // Хвост в этот же шаг освобождает клетку, если змейка не растёт
+    const solid = grows ? snake.length : snake.length - 1;
+    let hitSelf = false;
+    for (let i = 0; i < solid; i++) {
+      if (snake[i].x === next.x && snake[i].y === next.y) hitSelf = true;
+    }
+
+    if (hitWall || hitSelf) {
+      finish(false);
+      return;
+    }
+
+    snake.unshift(next);
+    if (grows) {
+      prevTail = snake[snake.length - 1];
+      eat(next);
+    } else {
+      prevTail = snake.pop();
+    }
+  }
+
+  function eat(at) {
+    score++;
+    scoreEl.textContent = score;
+    restartAnimation(scoreEl, 'bump');
+    if (score > best) {
+      best = score;
+      newRecord = true;
+      bestEl.textContent = best;
+      saveBest();
+      restartAnimation(bestEl, 'bump');
+    }
+    burst(at);
+    food = spawnFood();
+    if (!food) finish(true);
+  }
+
+  function finish(won) {
+    state = 'over';
+    syncPauseButton();
+    if (!won) restartAnimation(board, 'shake');
+    setTimeout(() => {
+      const summary = `Счёт: ${score} · Рекорд: ${best}`;
+      if (won) showOverlay('Поле заполнено!', summary, 'Играть снова', true);
+      else if (newRecord) showOverlay('Новый рекорд!', summary, 'Играть снова', true);
+      else showOverlay('Игра окончена', summary, 'Играть снова');
+    }, GAME_OVER_DELAY);
+  }
+
+  function restartAnimation(el, name) {
+    el.classList.remove(name);
+    void el.offsetWidth;
+    el.classList.add(name);
+  }
+
+  function burst(at) {
+    if (reducedMotion) return;
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 3.5;
+      particles.push({
+        x: at.x + .5,
+        y: at.y + .5,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1
+      });
+    }
+  }
+
+  /* ---------- Отрисовка ---------- */
+
+  function resize() {
+    const size = canvas.clientWidth;
+    if (!size) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = canvas.height = Math.round(size * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cell = size / GRID;
+
+    backdrop = document.createElement('canvas');
+    backdrop.width = backdrop.height = canvas.width;
+    const b = backdrop.getContext('2d');
+    b.scale(dpr, dpr);
+    b.fillStyle = '#10181d';
+    b.fillRect(0, 0, size, size);
+    b.fillStyle = '#141e24';
+    for (let y = 0; y < GRID; y++) {
+      for (let x = (y % 2); x < GRID; x += 2) {
+        b.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+  }
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function drawFood(now) {
+    if (!food) return;
+    // Время кадра может быть чуть раньше foodBorn, поэтому ограничиваем снизу нулём
+    const appear = reducedMotion ? 1 : Math.max(0, Math.min(1, (now - foodBorn) / 180));
+    const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 260) * .06;
+    const r = cell * .36 * appear * pulse;
+    const cx = (food.x + .5) * cell;
+    const cy = (food.y + .5) * cell;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 107, 87, .8)';
+    ctx.shadowBlur = cell * .7;
+    ctx.fillStyle = '#ff6b57';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, .55)';
+    ctx.beginPath();
+    ctx.arc(cx - r * .32, cy - r * .36, r * .22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSnake(t) {
+    const head = snake[0];
+    const neck = snake[1];
+    const tail = snake[snake.length - 1];
+
+    const points = [{ x: lerp(neck.x, head.x, t), y: lerp(neck.y, head.y, t) }];
+    for (let i = 1; i < snake.length; i++) points.push(snake[i]);
+    points.push({ x: lerp(prevTail.x, tail.x, t), y: lerp(prevTail.y, tail.y, t) });
+
+    ctx.lineCap = 'round';
+    const last = points.length - 1;
+    // Каждый сегмент делится на части, чтобы цвет и толщина менялись плавно
+    const parts = 4;
+    for (let i = last; i > 0; i--) {
+      const near = points[i - 1];
+      const far = points[i];
+      for (let s = parts - 1; s >= 0; s--) {
+        const from = (s + 1) / parts;
+        const to = s / parts;
+        const k = (i - 1 + (from + to) / 2) / last;
+        const r = Math.round(lerp(HEAD_COLOR[0], TAIL_COLOR[0], k));
+        const g = Math.round(lerp(HEAD_COLOR[1], TAIL_COLOR[1], k));
+        const b = Math.round(lerp(HEAD_COLOR[2], TAIL_COLOR[2], k));
+        ctx.strokeStyle = `rgb(${r},${g},${b})`;
+        ctx.lineWidth = cell * lerp(.76, .5, k);
+        ctx.beginPath();
+        ctx.moveTo((lerp(near.x, far.x, from) + .5) * cell, (lerp(near.y, far.y, from) + .5) * cell);
+        ctx.lineTo((lerp(near.x, far.x, to) + .5) * cell, (lerp(near.y, far.y, to) + .5) * cell);
+        ctx.stroke();
+      }
+    }
+
+    drawEyes(points[0], head.x - neck.x, head.y - neck.y);
+  }
+
+  function drawEyes(pos, dx, dy) {
+    const cx = (pos.x + .5) * cell;
+    const cy = (pos.y + .5) * cell;
+    const forward = cell * .13;
+    const side = cell * .19;
+    for (const s of [-1, 1]) {
+      const ex = cx + dx * forward - dy * side * s;
+      const ey = cy + dy * forward + dx * side * s;
+      ctx.fillStyle = '#0b1014';
+      ctx.beginPath();
+      ctx.arc(ex, ey, cell * .1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(ex + dx * cell * .03, ey + dy * cell * .03, cell * .035, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawParticles(dt) {
+    const s = dt / 1000;
+    particles = particles.filter(p => (p.life -= s * 2) > 0);
+    ctx.fillStyle = '#ff8d7d';
+    for (const p of particles) {
+      p.x += p.vx * s;
+      p.y += p.vy * s;
+      ctx.globalAlpha = p.life;
+      ctx.beginPath();
+      ctx.arc(p.x * cell, p.y * cell, cell * .1 * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function render(now, dt) {
+    if (!backdrop) return;
+    const size = canvas.clientWidth;
+    const moving = state === 'playing' || state === 'paused';
+    ctx.drawImage(backdrop, 0, 0, size, size);
+    drawFood(now);
+    drawSnake(moving ? Math.min(1, acc / stepMs()) : 1);
+    drawParticles(dt);
+  }
+
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(100, now - lastFrame);
+    lastFrame = now;
+
+    if (state === 'playing') {
+      acc += dt;
+      let step = stepMs();
+      while (state === 'playing' && acc >= step) {
+        acc -= step;
+        tick();
+        step = stepMs();
+      }
+    }
+
+    render(now, dt);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- Управление ---------- */
+
+  function primaryAction() {
+    if (state === 'ready') start();
+    else if (state === 'paused') setPaused(false);
+    else if (state === 'over' && !overlay.classList.contains('hidden')) start();
+  }
+
+  function steer(direction) {
+    if (state === 'ready') start(direction);
+    else if (state === 'playing') turn(direction);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const direction = KEY_DIRECTIONS[e.key];
+    if (direction) {
+      e.preventDefault();
+      steer(direction);
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (state === 'playing') {
+        if (e.key === ' ') setPaused(true);
+      } else {
+        primaryAction();
+      }
+    }
+  });
+
+  let swipeStart = null;
+
+  document.addEventListener('touchstart', e => {
+    swipeStart = e.touches.length === 1
+      ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      : null;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!swipeStart || e.touches.length !== 1) return;
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const dx = x - swipeStart.x;
+    const dy = y - swipeStart.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_DISTANCE) return;
+    steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : (dy > 0 ? DOWN : UP));
+    // Новая точка отсчёта: можно поворачивать снова, не отрывая палец
+    swipeStart = { x, y };
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => { swipeStart = null; });
+  document.addEventListener('touchcancel', () => { swipeStart = null; });
+
+  overlayBtn.addEventListener('click', primaryAction);
+  pauseBtn.addEventListener('click', () => {
+    setPaused(state === 'playing');
+    pauseBtn.blur();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) setPaused(true);
+  });
+
+  /* ---------- Запуск ---------- */
+
+  $('hint').textContent = isTouch
+    ? 'Проводите пальцем по экрану, чтобы поворачивать'
+    : 'Стрелки — движение · Пробел — пауза';
+  overlayText.textContent = isTouch
+    ? 'Проведите пальцем в любую сторону'
+    : 'Нажмите любую стрелку';
+  bestEl.textContent = best;
+
+  reset();
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
